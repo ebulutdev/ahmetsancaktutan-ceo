@@ -28,7 +28,12 @@ Ardından http://localhost:8080 adresini açın.
 ## Yayın (Firebase App Hosting)
 
 Backend: `ahmetsancaktutan-ceo` (proje `aytekinsancaktutan-91874-c235e`, bölge `europe-west4`).
-Yalnızca bu backend'e dağıtım yapılır; projedeki diğer backend'ler etkilenmez.
+Canlı adres: https://ahmetsancaktutan-ceo--aytekinsancaktutan-91874-c235e.europe-west4.hosted.app
+
+**Otomatik yayın:** backend bu deponun `main` dalına bağlıdır. `main`'e yapılan her push
+birkaç dakika içinde siteyi otomatik günceller. Projedeki diğer backend'ler etkilenmez.
+
+Elle yayın gerekirse (yalnızca bu backend'i hedefler):
 
 ```bash
 firebase deploy --only apphosting:ahmetsancaktutan-ceo --project aytekinsancaktutan-91874-c235e
