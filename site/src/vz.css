@@ -1,0 +1,91 @@
+/* ==========================================================================
+   VİZYON — prosedürel 3D bina (Three.js)
+   ========================================================================== */
+.vz { position: relative; height: 520vh; background: #0a0a0c; --mono: "JetBrains Mono", ui-monospace, monospace; --hair: rgba(244,244,246,.16); }
+.vz__sticky { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; isolation: isolate; }
+.vz__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: -2; opacity: 0; transition: opacity 1.2s var(--ease); }
+.vz.is-ready .vz__canvas { opacity: 1; }
+.vz__fallback { position: absolute; inset: 0; z-index: -3; opacity: .35; }
+.vz.has-gl .vz__fallback { display: none; }
+.vz__shade {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(10,10,12,.78) 0%, rgba(10,10,12,.35) 24%, rgba(10,10,12,0) 42%),
+              linear-gradient(0deg, rgba(10,10,12,.55) 0%, rgba(10,10,12,0) 20%);
+}
+
+/* Kutusuz HUD — doğrudan render üstünde */
+.vz-hud {
+  position: absolute; z-index: 3; pointer-events: none;
+  top: calc(88px + env(safe-area-inset-top)); left: var(--gutter); right: var(--gutter);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: #8e929e; text-shadow: 0 1px 14px rgba(0,0,0,.7);
+}
+.vz-hud__l { display: flex; align-items: baseline; gap: 14px; }
+.vz-hud__l b { font-weight: 500; color: var(--brass); font-variant-numeric: tabular-nums; }
+.vz-hud__l b i { font-style: normal; color: #6f7380; }
+.vz-hud__l span { color: #f4f4f6; }
+.vz-hud__r { display: flex; gap: 22px; }
+.vz-hud__r b { font-weight: 500; color: #f4f4f6; margin-left: 8px; font-variant-numeric: tabular-nums; }
+.vz-hud__r i { font-style: normal; }
+.vz-crop { position: absolute; z-index: 3; width: 14px; height: 14px; border: 0 solid rgba(197,160,89,.55); pointer-events: none; }
+.vz-crop--tl { top: calc(72px + env(safe-area-inset-top)); left: calc(var(--gutter) * .5); border-width: 1px 0 0 1px; }
+.vz-crop--tr { top: calc(72px + env(safe-area-inset-top)); right: calc(var(--gutter) * .5); border-width: 1px 1px 0 0; }
+.vz-crop--bl { bottom: 22px; left: calc(var(--gutter) * .5); border-width: 0 0 1px 1px; }
+.vz-crop--br { bottom: 22px; right: calc(var(--gutter) * .5); border-width: 0 1px 1px 0; }
+
+/* Panel — kısa, sade */
+.vz__panels { position: absolute; z-index: 2; left: var(--gutter); bottom: calc(52px + env(safe-area-inset-bottom)); width: min(440px, 40vw); height: 0; }
+.vz-panel {
+  position: absolute; left: 0; bottom: 0; width: 100%;
+  opacity: 0; visibility: hidden; transform: translate3d(0, 18px, 0);
+  transition: opacity .6s var(--ease), transform .9s var(--ease), visibility .6s;
+}
+.vz-panel.is-on { opacity: 1; visibility: visible; transform: none; transition-delay: .12s; }
+.vz-panel__k {
+  margin: 0 0 14px; display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: #8e929e;
+}
+.vz-panel__k b { font-weight: 500; color: var(--brass); }
+.vz-panel__k::after { content: ""; width: 36px; height: 1px; background: var(--brass); opacity: .6; }
+.vz-panel__t { font-size: clamp(28px, 2.7vw, 46px); line-height: 1.06; color: #f4f4f6; letter-spacing: -.01em; }
+.vz-panel__t em { color: var(--brass); }
+.vz-panel__b { margin: 12px 0 0; font-size: 14.5px; line-height: 1.5; color: #b9bcc5; letter-spacing: .01em; }
+.vz-panel__link {
+  margin-left: 10px; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--brass);
+  transition: color .3s;
+}
+.vz-panel__link:hover { color: #f4f4f6; }
+
+/* Faz göstergesi — sağ kenarda dikey, küçük */
+.vz-track { position: absolute; z-index: 3; right: var(--gutter); top: 50%; translate: 0 -50%; display: grid; gap: 10px; }
+.vz-track button { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 30px; }
+.vz-track span { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; color: #6f7380; transition: color .4s; text-shadow: 0 1px 10px rgba(0,0,0,.7); }
+.vz-track i { display: block; width: 1px; height: 30px; background: rgba(244,244,246,.18); position: relative; overflow: hidden; }
+.vz-track s { position: absolute; inset: 0; background: var(--brass); transform-origin: top; transform: scaleY(0); text-decoration: none; }
+.vz-track button.is-on span { color: var(--brass-hi); }
+.vz-track button:hover span { color: #f4f4f6; }
+
+@media (max-width: 900px) {
+  .vz { height: 440vh; }
+  .vz__shade { background: linear-gradient(0deg, rgba(10,10,12,.9) 0%, rgba(10,10,12,.5) 20%, rgba(10,10,12,0) 36%); }
+  .vz-hud { top: calc(74px + env(safe-area-inset-top)); font-size: 10px; letter-spacing: .1em; }
+  .vz-hud__r { gap: 14px; }
+  .vz-hud__geo { display: none; }
+  .vz-crop { display: none; }
+  .vz-hud { left: var(--gutter); right: var(--gutter); font-size: 10px; letter-spacing: .08em; }
+  .vz-hud__l { gap: 10px; min-width: 0; }
+  .vz-hud__l span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vz-hud__r { gap: 12px; flex: none; }
+  .vz-hud__r i { display: none; }
+  .vz-hud__r b { margin-left: 0; }
+  .vz-crop--tl, .vz-crop--tr { top: calc(62px + env(safe-area-inset-top)); }
+  .vz__panels { right: calc(var(--gutter) + 36px); width: auto; bottom: calc(34px + env(safe-area-inset-bottom)); }
+  .vz-panel__t { font-size: clamp(25px, 7vw, 32px); }
+  .vz-panel__b { font-size: 13.5px; margin-top: 8px; }
+  .vz-panel__k { margin-bottom: 10px; }
+  .vz-track { top: auto; bottom: calc(34px + env(safe-area-inset-bottom)); translate: none; gap: 4px; }
+  .vz-track button { min-height: 24px; gap: 8px; }
+  .vz-track i { height: 20px; }
+}

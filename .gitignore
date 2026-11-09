@@ -1,0 +1,9 @@
+# Ham kaynak görseller/videolar (yayın için gerekmez; site/ altında optimize edilmiş halleri var)
+assets/
+# Yerel araç ayarları
+.claude/
+node_modules/
+firebase-debug*.log
+.firebase/
+.DS_Store
+Thumbs.db
