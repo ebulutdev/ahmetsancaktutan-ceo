@@ -18,15 +18,15 @@ const rand = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 
 
 const FLOORS = [
   { x: 0,    z: 0,    w: 22, d: 14, clad: [],           fins: false, lobby: true },
-  { x: 2.5,  z: 0.5,  w: 25, d: 15, clad: ['-x'],       fins: true },
-  { x: 2.5,  z: 1.5,  w: 25, d: 17, clad: ['-x', '-z'], fins: false, balcony: true },
+  { x: 1.5,  z: 0.5,  w: 25, d: 15, clad: ['-x'],       fins: true },
+  { x: 1.5,  z: 1.5,  w: 25, d: 17, clad: ['-x', '-z'], fins: false, balcony: true },
   { x: -2,   z: 1.5,  w: 26, d: 17, clad: ['+x'],       fins: true, balcony: true },
   { x: -2,   z: 0,    w: 22, d: 14, clad: ['-z'],       fins: false },
-  { x: 1,    z: -0.5, w: 18, d: 12, clad: ['-x'],       fins: true },
+  { x: -3,   z: -0.5, w: 20, d: 12, clad: ['-x'],       fins: true },
 ];
 const COLS = [];
 for (const x of [-9, -3, 3, 9]) for (const z of [-5.5, 0, 5.5]) COLS.push([x, z]);
-const CORE = { x: -5.5, z: -2.5, w: 4.2, d: 5 };
+const CORE = { x: -2.5, z: -1.5, w: 3.8, d: 4.2 };
 
 /* ---------------- yardımcılar ---------------- */
 class Lines {
@@ -92,6 +92,161 @@ const pavingTex = () => canvasTex(512, (x, S) => {
   const n = 8, t = S / n;
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = 62 + rand() * 18; x.fillStyle = `rgb(${v + 6},${v + 2},${v - 4})`; x.fillRect(i * t + 2, j * t + 2, t - 4, t - 4); }
 }, 10);
+
+const loadImg = (src) => new Promise((res) => {
+  const im = new Image();
+  im.onload = () => res(im);
+  im.onerror = () => res(null);
+  im.src = src;
+});
+
+function sharpenIcon(img, sx, sy, sw, sh, dw, dh, topCol, botCol, dilate = 0) {
+  const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  if (dilate > 0) {
+    for (let ox = -dilate; ox <= dilate; ox++) {
+      for (let oy = -dilate; oy <= dilate; oy++) {
+        if (ox * ox + oy * oy <= dilate * dilate + 0.5) ctx.drawImage(img, sx, sy, sw, sh, ox, oy, dw, dh);
+      }
+    }
+  } else {
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+  }
+  const id = ctx.getImageData(0, 0, dw, dh), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    d[i + 3] = a < 70 ? 0 : a > 155 ? 255 : Math.round(((a - 70) / 85) * 255);
+  }
+  ctx.putImageData(id, 0, 0);
+  ctx.globalCompositeOperation = 'source-in';
+  const g = ctx.createLinearGradient(0, 0, dw * 0.25, dh);
+  g.addColorStop(0, topCol); g.addColorStop(0.5, botCol); g.addColorStop(1, topCol);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, dw, dh);
+  return c;
+}
+
+function makeNormalMap(srcCanvas) {
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const sCtx = srcCanvas.getContext('2d');
+  const src = sCtx.getImageData(0, 0, w, h).data;
+  const outC = document.createElement('canvas'); outC.width = w; outC.height = h;
+  const oCtx = outC.getContext('2d');
+  const out = oCtx.createImageData(w, h), dst = out.data;
+  const alphaAt = (x, y) => {
+    const cx = x < 0 ? 0 : x >= w ? w - 1 : x;
+    const cy = y < 0 ? 0 : y >= h ? h - 1 : y;
+    return src[(cy * w + cx) * 4 + 3] / 255;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      const dx = (alphaAt(x - 2, y) - alphaAt(x + 2, y)) * 2.4;
+      const dy = (alphaAt(x, y + 2) - alphaAt(x, y - 2)) * 2.4;
+      const inv = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+      dst[idx] = Math.round((dx * inv * 0.5 + 0.5) * 255);
+      dst[idx + 1] = Math.round((dy * inv * 0.5 + 0.5) * 255);
+      dst[idx + 2] = Math.round(inv * 255);
+      dst[idx + 3] = 255;
+    }
+  }
+  oCtx.putImageData(out, 0, 0);
+  return outC;
+}
+
+function brandSignTextures(kind, astImg, fetsanImg, maxAniso = 8) {
+  const W = 2560, H = 480;
+  const art = document.createElement('canvas'); art.width = W; art.height = H;
+  const x = art.getContext('2d');
+
+  const goldGrad = x.createLinearGradient(0, 60, 0, H - 60);
+  goldGrad.addColorStop(0, '#fff3cc');
+  goldGrad.addColorStop(0.45, '#e5be6b');
+  goldGrad.addColorStop(1, '#b88936');
+
+  const ivoryGrad = x.createLinearGradient(0, 70, 0, H - 70);
+  ivoryGrad.addColorStop(0, '#ffffff');
+  ivoryGrad.addColorStop(0.5, '#f6efe0');
+  ivoryGrad.addColorStop(1, '#dfd0b4');
+
+  if (kind === 'ast') {
+    if (astImg) {
+      const mono = sharpenIcon(astImg, 0, 0, 365, 402, 360, 396, '#fffaf0', '#e3c98d', 2);
+      x.drawImage(mono, 180, 42);
+    }
+    x.fillStyle = goldGrad;
+    x.fillRect(612, 92, 8, H - 184);
+
+    x.textBaseline = 'middle';
+    x.font = '600 184px "IBM Plex Sans", sans-serif';
+    x.letterSpacing = '6px';
+    x.fillStyle = ivoryGrad;
+    x.fillText('AST MİMARLIK', 688, H / 2 + 6);
+  } else {
+    if (fetsanImg) {
+      const icon = sharpenIcon(fetsanImg, 0, 0, 97, 98, 384, 388, '#fff0b8', '#cf9e3c', 1);
+      x.drawImage(icon, 175, 46);
+    }
+    x.fillStyle = goldGrad;
+    x.fillRect(628, 92, 8, H - 184);
+
+    x.textBaseline = 'middle';
+    x.font = '600 188px "IBM Plex Sans", sans-serif';
+    x.letterSpacing = '6px';
+    x.fillStyle = goldGrad;
+    x.fillText('FETSAN GRUP', 704, H / 2 + 6);
+  }
+
+  // Ön yüzey: keskin 3B pah (bevel) + üst sol speküler parlama + alt sağ bronz pah
+  const faceC = document.createElement('canvas'); faceC.width = W; faceC.height = H;
+  const fx = faceC.getContext('2d');
+  fx.drawImage(art, 0, 0);
+  fx.globalCompositeOperation = 'source-atop';
+  fx.shadowColor = 'rgba(110, 75, 22, 0.85)';
+  fx.shadowBlur = 2; fx.shadowOffsetX = -3; fx.shadowOffsetY = -3;
+  fx.drawImage(art, 0, 0);
+  fx.shadowColor = 'rgba(255, 253, 244, 0.95)';
+  fx.shadowBlur = 2; fx.shadowOffsetX = 3; fx.shadowOffsetY = 3;
+  fx.drawImage(art, 0, 0);
+
+  // Arka yüzey: YALNIZCA yumuşak LED hare ve düşen gölge (keskin harf kopyası silinir -> çift görüntü oluşmaz)
+  const haloC = document.createElement('canvas'); haloC.width = W; haloC.height = H;
+  const hx = haloC.getContext('2d');
+  hx.save();
+  hx.shadowColor = 'rgba(255, 200, 112, 0.65)';
+  hx.shadowBlur = 46;
+  hx.drawImage(art, 0, 0);
+  hx.restore();
+
+  hx.save();
+  hx.shadowColor = 'rgba(0, 0, 0, 0.92)';
+  hx.shadowBlur = 16; hx.shadowOffsetX = 10; hx.shadowOffsetY = 14;
+  hx.drawImage(art, 0, 0);
+  hx.restore();
+
+  // Harflerin tam arkasındaki keskin kopyayı temizle, yalnız dış hare ve gölge kalsın
+  hx.globalCompositeOperation = 'destination-out';
+  hx.drawImage(art, 0, 0);
+
+  // Yan ekstrüzyon (3B kutu harf parlak fırçalanmış altın-bronz yan yüzeyler)
+  const sideC = document.createElement('canvas'); sideC.width = W; sideC.height = H;
+  const sx = sideC.getContext('2d');
+  sx.drawImage(art, 0, 0);
+  sx.globalCompositeOperation = 'source-in';
+  const sg = sx.createLinearGradient(0, 0, 0, H);
+  sg.addColorStop(0, '#b89248'); sg.addColorStop(0.5, '#8c692c'); sg.addColorStop(1, '#5e4318');
+  sx.fillStyle = sg; sx.fillRect(0, 0, W, H);
+
+  const normC = makeNormalMap(art);
+
+  const toTex = (cv, srgb = true) => {
+    const t = new THREE.CanvasTexture(cv);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = maxAniso;
+    return t;
+  };
+  return { face: toTex(faceC, true), halo: toTex(haloC, true), side: toTex(sideC, true), norm: toTex(normC, false) };
+}
 
 /* gökyüzü kubbesi */
 function makeSky() {
@@ -164,7 +319,11 @@ export async function init({ section, ScrollTrigger }) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
 
-  try { await document.fonts.load('500 72px "JetBrains Mono"'); } catch (e) { /* yedek font */ }
+  const [astImg, fetsanImg] = await Promise.all([
+    loadImg('brand/ast_mimarlik-ivory.png'),
+    loadImg('brand/fetsan-white.png'),
+    document.fonts ? document.fonts.load('500 72px "JetBrains Mono"').catch(() => {}) : Promise.resolve(),
+  ]);
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(mobile ? 52 : 36, 1, 0.5, 900);
@@ -203,11 +362,33 @@ export async function init({ section, ScrollTrigger }) {
     }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
+  const maxAniso = renderer.capabilities.getMaxAnisotropy() || 8;
+  const makeSignMats = (kind) => {
+    const t = brandSignTextures(kind, astImg, fetsanImg, maxAniso);
+    return {
+      face: new THREE.MeshStandardMaterial({
+        map: t.face, normalMap: t.norm, normalScale: new THREE.Vector2(1.8, 1.8),
+        emissive: 0xffffff, emissiveMap: t.face, emissiveIntensity: 0.55,
+        roughness: 0.2, metalness: 0.5, transparent: true, alphaTest: 0.35, depthWrite: true,
+      }),
+      halo: new THREE.MeshStandardMaterial({
+        map: t.halo, emissive: 0xffd28a, emissiveMap: t.halo, emissiveIntensity: 0.5,
+        roughness: 0.6, metalness: 0.1, transparent: true, depthWrite: false,
+      }),
+      side: new THREE.MeshStandardMaterial({
+        map: t.side, emissive: 0xffffff, emissiveMap: t.side, emissiveIntensity: 0.22,
+        roughness: 0.28, metalness: 0.78, transparent: true, alphaTest: 0.42, depthWrite: true,
+      }),
+    };
+  };
+  const S_AST = makeSignMats('ast');
+  const S_FETSAN = makeSignMats('fetsan');
   const M = {
     slab: new THREE.MeshStandardMaterial({ color: 0xffffff, map: trav, roughness: 0.58 }),
     concrete: new THREE.MeshStandardMaterial({ color: 0xb5ada1, roughness: 0.85 }),
     core: new THREE.MeshStandardMaterial({ map: marbleTex('#e8e2d6', '#d6cfc2', '150,135,110', 20), roughness: 0.28 }),
     clad: new THREE.MeshStandardMaterial({ map: marbleTex('#2c2d31', '#1f2024', '197,160,89', 22), roughness: 0.34, metalness: 0.15 }),
+    signPlinth: new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 0.38, metalness: 0.55 }),
     wood: new THREE.MeshStandardMaterial({ map: woodTex(), roughness: 0.52 }),
     bronze: new THREE.MeshStandardMaterial({ color: 0xa8854f, roughness: 0.3, metalness: 1 }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0x5f7e96, roughness: 0.02, metalness: 0.05, ior: 1.5, reflectivity: 0.9, transparent: true, opacity: 0, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 2.4, depthWrite: false }),
@@ -270,7 +451,7 @@ export async function init({ section, ScrollTrigger }) {
   const cypTrunk = new THREE.CylinderGeometry(0.1, 0.16, 1.6, 6); cypTrunk.translate(0, 0.8, 0);
 
   const planes = [[-24, 19], [-14, 19], [-4, 19], [6, 19], [16, 19], [26, 19], [-21, -10], [24, -6]];
-  const cyps = [[-17.5, -8], [-17.5, -4], [-17.5, 0], [-17.5, 4], [-17.5, 8], [19.5, 6], [19.5, 10]];
+  const cyps = [[-18.5, -11], [-18.5, 10.5], [19.5, 6], [19.5, 10]];
   const hedges = []; for (let x = -12; x <= 14; x += 1.7) hedges.push([x, 0.6, 15.6, rand() * 3, 0.8 + rand() * 0.25]);
   const trees = { plane: [], cyp: [] };
   const planeTrunks = inst(trunkGeo, M.bark, planes.map(([x, z]) => [x, 0, z]));
@@ -332,10 +513,42 @@ export async function init({ section, ScrollTrigger }) {
     const sideX = (z) => { const n = Math.max(1, Math.round(ew / pane)), pw = ew / n; for (let k = 0; k < n; k++) { const x = ex0 + pw * (k + 0.5); glassList.push([x, py, z, 0, pw]); wBlue.rectXY(x, py, z, pw - 0.06, ph); } };
     const sideZ = (x) => { const n = Math.max(1, Math.round(ed / pane)), pw = ed / n; for (let k = 0; k < n; k++) { const z = ez0 + pw * (k + 0.5); glassList.push([x, py, z, Math.PI / 2, pw]); wBlue.rectZY(x, py, z, pw - 0.06, ph); } };
     const cladAdd = (w, d, x, z) => { const c = box(w, ph, d, M.clad); c.position.set(x, py, z); facade.add(c); wGold.box(x, py, z, w, ph, d); };
+    const addBrandSign = (sm, sx, sy, sz, rotY, maxW, maxH) => {
+      const aspect = 2560 / 480;
+      const h0 = Math.min(maxH * 0.88, 2.55);
+      const w = Math.min(maxW * 0.86, h0 * aspect);
+      const h = w / aspect;
+      const sg = new THREE.Group();
+      sg.position.set(sx, sy, sz);
+      sg.rotation.y = rotY;
+
+      const pGeo = new THREE.PlaneGeometry(w, h);
+      const halo = new THREE.Mesh(pGeo, sm.halo);
+      halo.position.z = 0.008;
+      sg.add(halo);
+
+      for (let k = 1; k <= 12; k++) {
+        const sl = new THREE.Mesh(pGeo, sm.side);
+        sl.position.z = 0.010 + k * 0.0045;
+        sg.add(sl);
+      }
+
+      const face = new THREE.Mesh(pGeo, sm.face);
+      face.position.z = 0.068;
+      sg.add(face);
+
+      facade.add(sg);
+    };
     if (f.clad.includes('+z')) cladAdd(ew, 0.3, ecx, ez1); else sideX(ez1);
-    if (f.clad.includes('-z')) cladAdd(ew, 0.3, ecx, ez0); else sideX(ez0);
+    if (f.clad.includes('-z')) {
+      cladAdd(ew, 0.3, ecx, ez0);
+      if (i === 4 || i === 2) addBrandSign(i === 4 ? S_AST : S_FETSAN, ecx, py, ez0 - 0.15, Math.PI, ew - 1.2, ph - 0.2);
+    } else sideX(ez0);
     if (f.clad.includes('+x')) cladAdd(0.3, ed, ex1, ecz); else sideZ(ex1);
-    if (f.clad.includes('-x')) cladAdd(0.3, ed, ex0, ecz); else sideZ(ex0);
+    if (f.clad.includes('-x')) {
+      cladAdd(0.3, ed, ex0, ecz);
+      if (i === 5 || i === 1) addBrandSign(i === 5 ? S_AST : S_FETSAN, ex0 - 0.15, py, ecz, -Math.PI / 2, ed - 0.8, ph - 0.2);
+    } else sideZ(ex0);
 
     const glass = new THREE.InstancedMesh(new THREE.BoxGeometry(1, ph, 0.05), M.glass, glassList.length);
     const o = new THREE.Object3D();
@@ -378,7 +591,7 @@ export async function init({ section, ScrollTrigger }) {
     const f = FLOORS[N - 1], g = new THREE.Group(); g.position.y = N * H;
     const struct = new THREE.Group(), facade = new THREE.Group(), interior = new THREE.Group(); g.add(struct, facade, interior);
     const wGold = new Lines(), wBlue = new Lines();
-    const rw = f.w + 4, rd = f.d + 2, rx = f.x - 1, rz = f.z + 0.5;
+    const rw = f.w + 2, rd = f.d + 2, rx = f.x, rz = f.z + 0.5;
     const roof = box(rw, SLAB, rd, M.slab); roof.position.set(rx, SLAB / 2, rz); struct.add(roof); wGold.box(rx, SLAB / 2, rz, rw, SLAB, rd);
     const stair = box(CORE.w, 3, CORE.d, M.clad); stair.position.set(CORE.x, SLAB + 1.5, CORE.z); struct.add(stair); wGold.box(CORE.x, SLAB + 1.5, CORE.z, CORE.w, 3, CORE.d);
     const beams = []; for (let x = rx + 1; x < rx + rw / 2 - 1; x += 0.9) { beams.push([x, SLAB + 2.9, rz + 1]); wBlue.seg(x, SLAB + 2.9, rz - 3, x, SLAB + 2.9, rz + 5); }
@@ -445,10 +658,11 @@ export async function init({ section, ScrollTrigger }) {
   sky.material.uniforms.uSunDir.value.copy(SUN_DIR);
 
   // şeffaf (cam, korkuluk) ve ışıyan (iç hacim, bant) yüzeyler gölge almaz → tarama/acne yok
+  const signMatSet = new Set([S_AST.face, S_AST.halo, S_AST.side, S_FETSAN.face, S_FETSAN.halo, S_FETSAN.side, M.signPlinth]);
   scene.traverse((o) => {
     if (!o.isMesh) return;
     const m = o.material;
-    if (m.transparent || m.side === THREE.BackSide || m === M.band || m === M.lampHead || m === M.water) { o.receiveShadow = false; o.castShadow = o.castShadow && !m.transparent; }
+    if (m.transparent || m.side === THREE.BackSide || m === M.band || m === M.lampHead || m === M.water || signMatSet.has(m)) { o.receiveShadow = false; o.castShadow = o.castShadow && !m.transparent && !signMatSet.has(m); }
   });
 
   /* ---------- bloom (yalnız masaüstü) ---------- */
@@ -524,7 +738,7 @@ export async function init({ section, ScrollTrigger }) {
     const e3 = ease(t3), e4 = ease(t4);
 
     // sahneyi kendi ekseni etrafında sürekli yavaşça döndür
-    world.rotation.y = time * 0.22;
+    world.rotation.y = Math.PI * 0.85 + time * 0.22;
 
     floors.forEach((fl, i) => {
       const a = i / (TOTAL + 0.6), k = ease(seg(t1, a, a + 1.6 / (TOTAL + 0.6)));
@@ -579,6 +793,9 @@ export async function init({ section, ScrollTrigger }) {
     M.roomLit.emissiveIntensity = 0.04 * t3 + 0.5 * e4;
     M.roomDim.emissiveIntensity = 0.02 * t3 + 0.16 * e4;
     M.band.emissiveIntensity = 0.3 * t3 + 1.35 * e4;
+    S_AST.face.emissiveIntensity = S_FETSAN.face.emissiveIntensity = 0.52 * e3 + 0.42 * e4;
+    S_AST.side.emissiveIntensity = S_FETSAN.side.emissiveIntensity = 0.22 * e3 + 0.18 * e4;
+    S_AST.halo.emissiveIntensity = S_FETSAN.halo.emissiveIntensity = 0.45 * e3 + 0.55 * e4;
     M.water.emissiveIntensity = 0.15 * e3 + 1.4 * e4;
     M.lampHead.emissiveIntensity = 1.1 * e4;
     M.slab.color.copy(SLAB_DAY).lerp(SLAB_NIGHT, e4);
@@ -599,7 +816,7 @@ export async function init({ section, ScrollTrigger }) {
 
     // kamera
     camPath.getPoint(p, camPos); lookPath.getPoint(p, camLook);
-    if (isPortrait) { camPos.multiplyScalar(1.42); camLook.y -= 4.5 * (1 - p * 0.5); }
+    if (isPortrait) { camPos.multiplyScalar(1.3); camLook.y -= 2.2 * (1 - p * 0.4); }
     camPos.y = Math.max(1.6, camPos.y);
     smx += (mx - smx) * 0.04; smy += (my - smy) * 0.04;
     camPos.x += Math.sin(time * 0.12) * 0.8 + smx * 4; camPos.y += Math.sin(time * 0.35) * 0.9 + smy * -2;
@@ -608,16 +825,18 @@ export async function init({ section, ScrollTrigger }) {
     // HUD
     const phase = Math.min(3, Math.floor(p * 4 + 0.0001));
     if (phase !== lastPhase) {
-      lastPhase = phase; if (hud.phase) hud.phase.textContent = PHASES[phase]; hud.scale.textContent = SCALES[phase];
-      hud.sheet.innerHTML = `0${phase + 1}<i>/04</i>`;
+      lastPhase = phase;
+      if (hud.phase) hud.phase.textContent = PHASES[phase];
+      if (hud.scale) hud.scale.textContent = SCALES[phase];
+      if (hud.sheet) hud.sheet.innerHTML = `0${phase + 1}<i>/04</i>`;
       hud.panels.forEach((el, i) => el.classList.toggle('is-on', i === phase));
       hud.steps.forEach((el, i) => el.classList.toggle('is-on', i === phase));
       section.dataset.phase = phase;
     }
     const pct = Math.round(p * 100);
-    if (pct !== lastPct) { lastPct = pct; hud.fills.forEach((f, k) => { f.style.transform = `scaleY(${clamp(p * 4 - k)})`; }); }
+    if (pct !== lastPct) { lastPct = pct; hud.fills.forEach((f, k) => { const v = clamp(p * 4 - k); f.style.transform = W <= 900 ? `scaleX(${v})` : `scaleY(${v})`; }); }
     const lvl = '+' + (Math.min(N, Math.floor((p < 0.25 ? t1 : t2 < 1 ? t2 : 1) * (N + 0.999))) * H).toFixed(2);
-    if (lvl !== lastLvl) { lastLvl = lvl; hud.level.textContent = lvl; }
+    if (lvl !== lastLvl) { lastLvl = lvl; if (hud.level) hud.level.textContent = lvl; }
     return t4;
   }
 

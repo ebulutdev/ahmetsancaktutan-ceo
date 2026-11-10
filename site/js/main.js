@@ -376,10 +376,94 @@
     if (Math.abs(dx) > 50) lbShow(lbI + (dx < 0 ? 1 : -1));
   });
 
-  /* ---------- Video ---------- */
+  /* ---------- Arka plan müziği + Video ---------- */
+  const bgm = $('#bgm'), bgmBtn = $('#bgmBtn');
+  let bgmUserMuted = false, bgmPausedByVideo = false, bgmRetryTimer = null;
+  const syncBgmUI = () => {
+    if (!bgmBtn || !bgm) return;
+    const playing = !bgm.paused && !bgm.muted;
+    bgmBtn.classList.toggle('is-playing', playing);
+    bgmBtn.setAttribute('aria-pressed', String(playing));
+    const lbl = $('.bgm-btn__lbl', bgmBtn);
+    if (lbl) lbl.textContent = playing ? 'Ses Açık' : 'Ses Kapalı';
+  };
+  const tryPlayBgm = () => {
+    if (!bgm || bgmUserMuted || bgmPausedByVideo) return;
+    bgm.volume = 0.55;
+    bgm.muted = false;
+    const p = bgm.play();
+    if (p && p.then) {
+      p.then(() => {
+        syncBgmUI();
+        if (bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
+      }).catch(() => {
+        if (window.__bgmAC && window.__bgmAC.state === 'suspended') {
+          window.__bgmAC.resume().then(() => { bgm.muted = false; bgm.play().then(syncBgmUI).catch(() => {}); }).catch(() => {});
+        }
+      });
+    }
+  };
+  if (bgm) {
+    bgm.addEventListener('play', syncBgmUI);
+    bgm.addEventListener('pause', syncBgmUI);
+    bgm.addEventListener('volumechange', syncBgmUI);
+    ['canplay', 'loadeddata', 'canplaythrough'].forEach((ev) => bgm.addEventListener(ev, tryPlayBgm));
+    addEventListener('load', tryPlayBgm);
+    addEventListener('pageshow', tryPlayBgm);
+    addEventListener('focus', tryPlayBgm);
+    d.addEventListener('visibilitychange', () => { if (!d.hidden) tryPlayBgm(); });
+    tryPlayBgm();
+    bgmRetryTimer = setInterval(() => {
+      if (bgmUserMuted || bgmPausedByVideo || (!bgm.paused && !bgm.muted)) {
+        if (!bgm.paused && !bgm.muted && bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
+        return;
+      }
+      tryPlayBgm();
+    }, 600);
+    const unlockEvents = ['pointerdown', 'touchstart', 'touchmove', 'wheel', 'keydown', 'click', 'scroll', 'pointermove', 'mousemove', 'mouseenter', 'mouseover'];
+    const onFirstGesture = () => {
+      if (bgmUserMuted || bgmPausedByVideo) return;
+      bgm.muted = false;
+      bgm.volume = 0.55;
+      const p = bgm.play();
+      if (p && p.then) {
+        p.then(() => {
+          syncBgmUI();
+          if (bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
+          unlockEvents.forEach((ev) => window.removeEventListener(ev, onFirstGesture, true));
+        }).catch(() => {});
+      }
+    };
+    unlockEvents.forEach((ev) => window.addEventListener(ev, onFirstGesture, { capture: true, passive: true }));
+    if (bgmBtn) {
+      bgmBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (bgm.paused || bgm.muted) {
+          bgmUserMuted = false;
+          window.__bgmUserMuted = false;
+          bgm.muted = false;
+          bgm.volume = 0.55;
+          bgm.play().then(syncBgmUI).catch(() => {});
+        } else {
+          bgmUserMuted = true;
+          window.__bgmUserMuted = true;
+          if (bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
+          bgm.pause();
+          syncBgmUI();
+        }
+      });
+    }
+  }
+
   const player = $('#player');
   if (player) {
     const v = $('video', player), bar = $('.player__bar i', player), mute = $('.player__mute', player);
+    v.addEventListener('play', () => {
+      if (bgm && !bgm.paused) { bgmPausedByVideo = true; bgm.pause(); }
+    });
+    v.addEventListener('pause', () => {
+      if (bgmPausedByVideo) { bgmPausedByVideo = false; tryPlayBgm(); }
+    });
     const toggle = () => {
       if (v.paused) {
         v.muted = false;
@@ -390,7 +474,7 @@
     player.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
     mute.addEventListener('click', (e) => { e.stopPropagation(); v.muted = !v.muted; mute.textContent = v.muted ? 'Sesi aç' : 'Sesi kapat'; });
     v.addEventListener('timeupdate', () => { bar.style.transform = `scaleX(${v.currentTime / (v.duration || 1)})`; });
-    v.addEventListener('ended', () => { player.classList.remove('is-playing'); player.classList.remove('is-paused'); v.currentTime = 0; });
+    v.addEventListener('ended', () => { player.classList.remove('is-playing'); player.classList.remove('is-paused'); v.currentTime = 0; if (bgmPausedByVideo) { bgmPausedByVideo = false; tryPlayBgm(); } });
     new IntersectionObserver(([en]) => { if (!en.isIntersecting && !v.paused) { v.pause(); player.classList.add('is-paused'); } }, { threshold: 0.2 }).observe(player);
   }
 
@@ -421,32 +505,57 @@
     show(0);
   }
 
-  /* ---------- Alıntılar: kaydırmaya bağlı ---------- */
+  /* ---------- Alıntılar: masaüstünde kaydırma, mobilde otomatik + dokunmatik ---------- */
   const qWrap = $('#quotes'), qSec = $('.quotes--scroll');
   if (qWrap && qSec) {
     const qs = $$('.quote', qWrap), btns = $$('.quotes__nav button');
     const fills = btns.map((b) => $('i', b));
-    let qi = 0;
+    let qi = 0, qTw = null, qIn = false;
     const go = (n) => {
-      if (n === qi) return;
-      const prev = qs[qi], next = qs[n], dir = n > qi ? 1 : -1; qi = n;
+      const targetIdx = (n + qs.length) % qs.length;
+      if (targetIdx === qi) return;
+      const prev = qs[qi], next = qs[targetIdx], dir = targetIdx > qi ? 1 : -1; qi = targetIdx;
       gsap.killTweensOf([prev, next]);
-      gsap.to(prev, { opacity: 0, y: -30 * dir, duration: 0.5, ease: 'power2.in', onComplete: () => { prev.classList.remove('is-on'); gsap.set(prev, { clearProps: 'all' }); } });
+      gsap.to(prev, { opacity: 0, y: -24 * dir, duration: 0.45, ease: 'power2.in', onComplete: () => { prev.classList.remove('is-on'); gsap.set(prev, { clearProps: 'all' }); } });
       next.classList.add('is-on');
-      gsap.fromTo(next, { opacity: 0, y: 40 * dir }, { opacity: 1, y: 0, duration: 1, delay: 0.25, ease: 'expo.out' });
+      gsap.fromTo(next, { opacity: 0, y: 30 * dir }, { opacity: 1, y: 0, duration: 0.9, delay: 0.18, ease: 'expo.out' });
       btns.forEach((b, k) => { b.classList.toggle('is-on', k === qi); b.setAttribute('aria-selected', k === qi); });
     };
-    ScrollTrigger.create({
-      trigger: qSec, start: 'top top', end: 'bottom bottom',
-      onUpdate: (st) => {
-        const p = st.progress;
-        go(Math.min(qs.length - 1, Math.floor(p * qs.length)));
-        fills.forEach((f, k) => { f.style.transform = `scaleX(${Math.min(1, Math.max(0, p * qs.length - k))})`; });
+    const startMobTimer = () => {
+      qTw?.kill();
+      fills.forEach((f, k) => gsap.set(f, { scaleX: k < qi ? 1 : 0 }));
+      qTw = gsap.fromTo(fills[qi], { scaleX: 0 }, { scaleX: 1, duration: 4.5, ease: 'none', paused: !qIn, onComplete: () => { go(qi + 1); startMobTimer(); } });
+    };
+    ScrollTrigger.matchMedia({
+      '(min-width: 901px)': () => {
+        qTw?.kill();
+        const st = ScrollTrigger.create({
+          trigger: qSec, start: 'top top', end: 'bottom bottom',
+          onUpdate: (s) => {
+            const p = s.progress;
+            go(Math.min(qs.length - 1, Math.floor(p * qs.length)));
+            fills.forEach((f, k) => { f.style.transform = `scaleX(${Math.min(1, Math.max(0, p * qs.length - k))})`; });
+          },
+        });
+        return () => st.kill();
+      },
+      '(max-width: 900px)': () => {
+        const st = ScrollTrigger.create({
+          trigger: qSec, start: 'top 85%', end: 'bottom 15%',
+          onToggle: (s) => { qIn = s.isActive; qIn ? qTw?.play() : qTw?.pause(); },
+        });
+        startMobTimer();
+        return () => { st.kill(); qTw?.kill(); };
       },
     });
     btns.forEach((b, k) => b.addEventListener('click', () => {
-      const top = qSec.getBoundingClientRect().top + scrollY;
-      scrollTo(top + (qSec.offsetHeight - innerHeight) * ((k + 0.5) / qs.length));
+      if (mqDesk.matches) {
+        const top = qSec.getBoundingClientRect().top + scrollY;
+        scrollTo(top + (qSec.offsetHeight - innerHeight) * ((k + 0.5) / qs.length));
+      } else {
+        go(k);
+        startMobTimer();
+      }
     }));
   }
 

@@ -22,7 +22,8 @@ def hd_sizes(name):
 
 
 def srcset(name, ext):
-    return ', '.join(f'img/{name}-{w}.{ext} {w}w' for w in hd_sizes(name))
+    q = '?v=2' if name == 'hero-crop' else ''
+    return ', '.join(f'img/{name}-{w}.{ext}{q} {w}w' for w in hd_sizes(name))
 
 
 def pic(name, sizes, alt, eager=False):
