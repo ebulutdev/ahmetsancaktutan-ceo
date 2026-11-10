@@ -15,21 +15,28 @@ def lqip(name):
     return 'data:image/webp;base64,' + base64.b64encode(open(p, 'rb').read()).decode()
 
 
+def hd_sizes(name):
+    s = M[name]['sizes']
+    hi = [w for w in s if w >= 1200]
+    return hi if hi else [s[-1]]
+
+
 def srcset(name, ext):
-    return ', '.join(f'img/{name}-{w}.{ext} {w}w' for w in M[name]['sizes'])
+    return ', '.join(f'img/{name}-{w}.{ext} {w}w' for w in hd_sizes(name))
 
 
 def pic(name, sizes, alt, eager=False):
     m = M[name]
-    mid = m['sizes'][min(1, len(m['sizes']) - 1)]
-    h = round(m['h'] * mid / m['w'])
+    hs = hd_sizes(name)
+    top = hs[-1]
+    h = round(m['h'] * top / m['w'])
     load = 'loading="eager" fetchpriority="high"' if eager else 'loading="lazy"'
     srcs = ''
     if AVIF:
         srcs += f'<source type="image/avif" srcset="{srcset(name, "avif")}" sizes="{sizes}">'
     return (f'<picture style="background-image:url({lqip(name)});background-size:cover;background-position:center">{srcs}'
-            f'<img src="img/{name}-{mid}.webp" srcset="{srcset(name, "webp")}" sizes="{sizes}" '
-            f'width="{mid}" height="{h}" alt="{html.escape(alt)}" {load} decoding="async"></picture>')
+            f'<img src="img/{name}-{top}.webp" srcset="{srcset(name, "webp")}" sizes="{sizes}" '
+            f'width="{top}" height="{h}" alt="{html.escape(alt)}" {load} decoding="async"></picture>')
 
 
 def art(mobile, desktop, alt, eager=False):
@@ -38,7 +45,7 @@ def art(mobile, desktop, alt, eager=False):
     for ext, typ in (([['avif', 'image/avif']] if AVIF else []) + [['webp', 'image/webp']]):
         src += f'<source media="(max-width: 900px)" type="{typ}" srcset="{srcset(mobile, ext)}" sizes="100vw">'
         src += f'<source media="(min-width: 901px)" type="{typ}" srcset="{srcset(desktop, ext)}" sizes="100vw">'
-    w = dk['sizes'][-2] if len(dk['sizes']) > 1 else dk['sizes'][-1]
+    w = dk['sizes'][-1]
     load = 'loading="eager" fetchpriority="high"' if eager else 'loading="lazy"'
     return (f'<div class="ph" style="background-image:url({lqip(desktop)})"><picture>{src}'
             f'<img src="img/{desktop}-{w}.webp" alt="{html.escape(alt)}" width="{w}" height="{round(dk["h"]*w/dk["w"])}" {load} decoding="async"></picture></div>')
@@ -50,24 +57,24 @@ def preload(name, media, sizes):
             f'imagesrcset="{srcset(name, ext)}" imagesizes="{sizes}" fetchpriority="high">')
 
 
-# ---- AST projeleri ----
+# ---- AST projeleri (yalnızca yüksek netlikli HD görseller) ----
 AST = [
-    ('mira-gold', 'Mira Gold', 'Kurumsal ofis', 'mira-gold-4', [4, 5, 6, 2, 3, 7, 8, 9, 10]),
-    ('primo-gold', 'Primo Gold', 'Yönetim ofisi', 'primo-gold-4', [4, 2, 5, 6, 8, 9, 10, 7, 3]),
-    ('metiner-kuyumculuk', 'Metiner Kuyumculuk', 'Perakende mağaza', 'metiner-kuyumculuk-4', [4, 2, 3, 5, 6]),
-    ('tuzla-villa', 'Tuzla Villa', 'Villa mimarisi', 'tuzla-villa-3', [3, 1, 2, 4, 5, 6, 7, 8]),
-    ('baraka-restoran', 'Baraka Restoran', 'Restoran · mimari & iç mekân', 'baraka-restoran-2', [2, 1, 3, 6, 7, 8, 9, 10, 4, 5]),
-    ('acarkent-villa', 'Acarkent Villa İ.K.', 'Villa iç mimarisi', 'acarkent-villa-2', [2, 4, 5, 6, 8, 9, 10]),
+    ('mira-gold', 'Mira Gold', 'Kurumsal ofis', 'mira-gold-3', [3, 9, 4]),
+    ('primo-gold', 'Primo Gold', 'Yönetim ofisi', 'primo-gold-8', [8, 4, 6, 9]),
+    ('metiner-kuyumculuk', 'Metiner Kuyumculuk', 'Perakende mağaza', 'metiner-kuyumculuk-2', [2, 4, 5]),
+    ('tuzla-villa', 'Tuzla Villa', 'Villa mimarisi', 'tuzla-villa-8', [8, 1, 2, 5, 6, 7]),
+    ('baraka-restoran', 'Baraka Restoran', 'Restoran · mimari & iç mekân', 'baraka-restoran-7', [7, 6, 8, 9, 3]),
+    ('acarkent-villa', 'Acarkent Villa İ.K.', 'Villa iç mimarisi', 'acarkent-villa-4', [4, 2]),
 ]
 ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 17L17 7M8 7h9v9"/></svg>'
 cards, data = [], []
 for i, (slug, name, typ, cover, idxs) in enumerate(AST):
     imgs = [f'ast-{slug}-{n}' for n in idxs if f'ast-{slug}-{n}' in M]
     data.append({'name': name, 'type': typ,
-                 'imgs': [{'n': k, 's': M[k]['sizes'], 'w': M[k]['w'], 'h': M[k]['h']} for k in imgs]})
+                 'imgs': [{'n': k, 's': hd_sizes(k), 'w': M[k]['w'], 'h': M[k]['h']} for k in imgs]})
     cards.append(
         f'<button class="ast-card" type="button" data-ast="{i}" data-cursor="view" aria-label="{html.escape(name)} galerisini aç">'
-        f'<div class="ph">{pic("ast-" + cover, "(max-width: 900px) 78vw, 34vw", name + " — AST Mimarlık")}</div>'
+        f'<div class="ph">{pic("ast-" + cover, "(max-width: 900px) 100vw, 75vw", name + " — AST Mimarlık")}</div>'
         f'<span class="ast-card__open">{ARROW}</span>'
         f'<div class="ast-card__meta"><div><h3>{html.escape(name)}</h3><div class="ast-card__type">{html.escape(typ)}</div></div>'
         f'<span class="ast-card__n">{len(imgs):02d} görsel</span></div></button>')
@@ -85,7 +92,7 @@ PR = [('pr-madimak', 'Madımak Sitesi', 'Site projesi', 'Küçükçekmece', F + 
       ('arch', 'Mimarlık', 'Hizmet alanı', 'AST Mimarlık', 'https://www.astmimarlik.com/projeler')]
 projects = ''.join(
     f'<a class="pcard" href="{url}" target="_blank" rel="noopener" data-cursor="view" data-reveal>'
-    f'<div class="ph" data-clip>{pic(k, "(max-width: 560px) 92vw, (max-width: 900px) 46vw, 31vw", n)}</div>'
+    f'<div class="ph" data-clip>{pic(k, "(max-width: 900px) 100vw, 55vw", n)}</div>'
     f'<div class="pcard__body"><h3>{html.escape(n)}</h3><div class="pcard__spec"><span>{t}</span><span>{loc}</span></div></div></a>'
     for k, n, t, loc, url in PR)
 
@@ -113,5 +120,5 @@ def rep(m):
 
 
 out = re.sub(r'\[\[([a-z-]+):?([^\]]*)\]\]', rep, src)
-open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8').write(out)
+open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8', newline='\n').write(out)
 print('index.html', len(out) // 1024, 'KB')

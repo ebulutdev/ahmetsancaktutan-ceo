@@ -336,7 +336,7 @@
     const im = imgs[lbI];
     lbImg.classList.add('is-swap');
     const pre = new Image();
-    pre.sizes = '100vw'; pre.srcset = srcset(im); pre.src = `img/${im.n}-${im.s[0]}.webp`;
+    pre.sizes = '100vw'; pre.srcset = srcset(im); pre.src = `img/${im.n}-${im.s[im.s.length - 1]}.webp`;
     const swap = () => { lbImg.sizes = '100vw'; lbImg.srcset = pre.srcset; lbImg.src = pre.src; lbImg.alt = `${lbP.name} — ${lbI + 1}`; requestAnimationFrame(() => lbImg.classList.remove('is-swap')); };
     (pre.decode ? pre.decode() : Promise.resolve()).then(swap, swap);
     lbCount.textContent = `${String(lbI + 1).padStart(2, '0')} / ${String(imgs.length).padStart(2, '0')}`;

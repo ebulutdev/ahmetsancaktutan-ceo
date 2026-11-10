@@ -490,7 +490,7 @@ export async function init({ section, ScrollTrigger }) {
     level: section.querySelector('[data-vz-level]'), sheet: section.querySelector('[data-vz-sheet]'),
     fills: [...section.querySelectorAll('.vz-track s')], panels: [...section.querySelectorAll('.vz-panel')], steps: [...section.querySelectorAll('.vz-track button')],
   };
-  const PHASES = ['Eskiz', 'Strüktür', 'Cephe · İç mimari', 'Yaşayan mekân'];
+  const PHASES = ['Tasarım', 'İnşaat', 'Mimarlık', 'Yaşam'];
   const SCALES = ['1:500', '1:200', '1:100', '1:50'];
   let lastPhase = -1, lastPct = -1, lastLvl = '';
 
@@ -508,7 +508,7 @@ export async function init({ section, ScrollTrigger }) {
   /* ---------- güncelleme ---------- */
   const tmpC = new THREE.Color(), tmpO = new THREE.Object3D();
   const SLAB_DAY = new THREE.Color(0xffffff), SLAB_NIGHT = new THREE.Color(0xb3a996);
-  let lastShadowP = -1, envMode = 'day';
+  let envMode = 'day', introT = 0;
 
   const sway = (mesh, list, y, time) => {
     list.forEach((t, i) => {
@@ -520,8 +520,11 @@ export async function init({ section, ScrollTrigger }) {
   };
 
   function update(p, time) {
-    const t1 = seg(p, 0.0, 0.24), t2 = seg(p, 0.22, 0.5), t3 = seg(p, 0.48, 0.76), t4 = seg(p, 0.74, 0.98);
+    const t1 = Math.max(ease(clamp(introT)), seg(p, 0.0, 0.24)), t2 = seg(p, 0.22, 0.5), t3 = seg(p, 0.48, 0.76), t4 = seg(p, 0.74, 0.98);
     const e3 = ease(t3), e4 = ease(t4);
+
+    // sahneyi kendi ekseni etrafında sürekli yavaşça döndür
+    world.rotation.y = time * 0.22;
 
     floors.forEach((fl, i) => {
       const a = i / (TOTAL + 0.6), k = ease(seg(t1, a, a + 1.6 / (TOTAL + 0.6)));
@@ -591,21 +594,21 @@ export async function init({ section, ScrollTrigger }) {
     renderer.toneMappingExposure = 1.0 + 0.22 * e3 - 0.12 * e4;
     if (bloom) { bloom.strength = 0.32 * e4; bloom.threshold = 0.92; bloom.radius = 0.4; }
 
-    // gölge haritasını yalnız sahne değişirken güncelle
-    if (renderer.shadowMap.enabled && t3 > 0 && Math.abs(p - lastShadowP) > 0.0015) { renderer.shadowMap.needsUpdate = true; lastShadowP = p; }
+    // gölge haritasını sahne dönerken güncelle
+    if (renderer.shadowMap.enabled && t3 > 0) { renderer.shadowMap.needsUpdate = true; }
 
     // kamera
     camPath.getPoint(p, camPos); lookPath.getPoint(p, camLook);
     if (isPortrait) { camPos.multiplyScalar(1.42); camLook.y -= 4.5 * (1 - p * 0.5); }
     camPos.y = Math.max(1.6, camPos.y);
     smx += (mx - smx) * 0.04; smy += (my - smy) * 0.04;
-    camPos.x += Math.sin(time * 0.12) * 0.8 + smx * 4; camPos.y += smy * -2;
+    camPos.x += Math.sin(time * 0.12) * 0.8 + smx * 4; camPos.y += Math.sin(time * 0.35) * 0.9 + smy * -2;
     camera.position.copy(camPos); camera.lookAt(camLook);
 
     // HUD
     const phase = Math.min(3, Math.floor(p * 4 + 0.0001));
     if (phase !== lastPhase) {
-      lastPhase = phase; hud.phase.textContent = PHASES[phase]; hud.scale.textContent = SCALES[phase];
+      lastPhase = phase; if (hud.phase) hud.phase.textContent = PHASES[phase]; hud.scale.textContent = SCALES[phase];
       hud.sheet.innerHTML = `0${phase + 1}<i>/04</i>`;
       hud.panels.forEach((el, i) => el.classList.toggle('is-on', i === phase));
       hud.steps.forEach((el, i) => el.classList.toggle('is-on', i === phase));
@@ -623,6 +626,7 @@ export async function init({ section, ScrollTrigger }) {
   let running = false, acc = 0, frames = 0;
   const frame = () => {
     const dt = Math.min(0.05, clock.getDelta());
+    if (introT < 1) introT = Math.min(1, introT + dt / 2.2);
     cur += (target - cur) * (1 - Math.pow(1 - 0.05, dt * 60));
     if (Math.abs(target - cur) < 0.00005) cur = target;
     const t4 = update(cur, clock.elapsedTime);
