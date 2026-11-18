@@ -22,7 +22,7 @@ def hd_sizes(name):
 
 
 def srcset(name, ext):
-    q = '?v=2' if name in ('hero-crop', 'office-fetsan') else ''
+    q = '?v=3' if name in ('hero-crop', 'office-fetsan') else ''
     return ', '.join(f'img/{name}-{w}.{ext}{q} {w}w' for w in hd_sizes(name))
 
 
@@ -31,7 +31,7 @@ def pic(name, sizes, alt, eager=False):
     hs = hd_sizes(name)
     top = hs[-1]
     h = round(m['h'] * top / m['w'])
-    q = '?v=2' if name in ('hero-crop', 'office-fetsan') else ''
+    q = '?v=3' if name in ('hero-crop', 'office-fetsan') else ''
     load = 'loading="eager" fetchpriority="high"' if eager else 'loading="lazy"'
     srcs = ''
     if AVIF:
