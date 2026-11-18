@@ -269,16 +269,20 @@
   const frames = $$('[data-frame]');
   const chaps = $$('[data-chap]');
   const capN = $('[data-chap-n]'), capT = $('[data-chap-t]');
-  let curChap = -1, z = 1;
+  const frameForChap = (i) => frames[i <= 5 ? i : i - 1];
+  let curChap = -1, curFrame = null, z = 1;
   const setChap = (i) => {
     if (i === curChap) return;
-    const prev = frames[curChap];
-    frames.forEach((f) => { if (f !== prev) f.classList.remove('is-prev'); f.classList.remove('is-on'); });
-    if (prev) prev.classList.add('is-prev');
-    const f = frames[i];
-    f.style.zIndex = ++z;
-    void f.offsetWidth;
-    f.classList.add('is-on');
+    const f = frameForChap(i);
+    if (f && f !== curFrame) {
+      const prev = curFrame;
+      frames.forEach((el) => { if (el !== prev) el.classList.remove('is-prev'); el.classList.remove('is-on'); });
+      if (prev) prev.classList.add('is-prev');
+      f.style.zIndex = ++z;
+      void f.offsetWidth;
+      f.classList.add('is-on');
+      curFrame = f;
+    }
     chaps.forEach((c, k) => $('.chap__year', c).classList.toggle('is-dim', k !== i));
     capN.textContent = romans[i];
     capT.textContent = $('h3', chaps[i]).textContent;
