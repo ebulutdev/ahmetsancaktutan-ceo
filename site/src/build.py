@@ -22,7 +22,7 @@ def hd_sizes(name):
 
 
 def srcset(name, ext):
-    q = '?v=2' if name == 'hero-crop' else ''
+    q = '?v=2' if name in ('hero-crop', 'office-fetsan') else ''
     return ', '.join(f'img/{name}-{w}.{ext}{q} {w}w' for w in hd_sizes(name))
 
 
@@ -31,12 +31,13 @@ def pic(name, sizes, alt, eager=False):
     hs = hd_sizes(name)
     top = hs[-1]
     h = round(m['h'] * top / m['w'])
+    q = '?v=2' if name in ('hero-crop', 'office-fetsan') else ''
     load = 'loading="eager" fetchpriority="high"' if eager else 'loading="lazy"'
     srcs = ''
     if AVIF:
         srcs += f'<source type="image/avif" srcset="{srcset(name, "avif")}" sizes="{sizes}">'
     return (f'<picture style="background-image:url({lqip(name)});background-size:cover;background-position:center">{srcs}'
-            f'<img src="img/{name}-{top}.webp" srcset="{srcset(name, "webp")}" sizes="{sizes}" '
+            f'<img src="img/{name}-{top}.webp{q}" srcset="{srcset(name, "webp")}" sizes="{sizes}" '
             f'width="{top}" height="{h}" alt="{html.escape(alt)}" {load} decoding="async"></picture>')
 
 

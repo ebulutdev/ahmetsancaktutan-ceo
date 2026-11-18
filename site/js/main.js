@@ -378,7 +378,7 @@
 
   /* ---------- Arka plan müziği + Video ---------- */
   const bgm = $('#bgm'), bgmBtn = $('#bgmBtn');
-  let bgmUserMuted = false, bgmPausedByVideo = false, bgmRetryTimer = null;
+  let bgmUserMuted = false, bgmPausedByVideo = false, bgmPausedByBg = false, bgmRetryTimer = null;
   const syncBgmUI = () => {
     if (!bgmBtn || !bgm) return;
     const playing = !bgm.paused && !bgm.muted;
@@ -387,8 +387,18 @@
     const lbl = $('.bgm-btn__lbl', bgmBtn);
     if (lbl) lbl.textContent = playing ? 'Ses Açık' : 'Ses Kapalı';
   };
+  const pauseForBackground = () => {
+    if (!bgm) return;
+    bgmPausedByBg = true;
+    bgm.pause();
+    if (window.__bgmAC && window.__bgmAC.state === 'running') {
+      try { window.__bgmAC.suspend(); } catch {}
+    }
+    syncBgmUI();
+  };
   const tryPlayBgm = () => {
-    if (!bgm || bgmUserMuted || bgmPausedByVideo) return;
+    if (!bgm || bgmUserMuted || bgmPausedByVideo || d.hidden || d.visibilityState === 'hidden') return;
+    bgmPausedByBg = false;
     bgm.volume = 0.55;
     bgm.muted = false;
     const p = bgm.play();
@@ -397,8 +407,8 @@
         syncBgmUI();
         if (bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
       }).catch(() => {
-        if (window.__bgmAC && window.__bgmAC.state === 'suspended') {
-          window.__bgmAC.resume().then(() => { bgm.muted = false; bgm.play().then(syncBgmUI).catch(() => {}); }).catch(() => {});
+        if (window.__bgmAC && window.__bgmAC.state === 'suspended' && !d.hidden) {
+          window.__bgmAC.resume().then(() => { if (!d.hidden) { bgm.muted = false; bgm.play().then(syncBgmUI).catch(() => {}); } }).catch(() => {});
         }
       });
     }
@@ -410,10 +420,18 @@
     ['canplay', 'loadeddata', 'canplaythrough'].forEach((ev) => bgm.addEventListener(ev, tryPlayBgm));
     addEventListener('load', tryPlayBgm);
     addEventListener('pageshow', tryPlayBgm);
-    addEventListener('focus', tryPlayBgm);
-    d.addEventListener('visibilitychange', () => { if (!d.hidden) tryPlayBgm(); });
+    addEventListener('focus', () => { if (!d.hidden) tryPlayBgm(); });
+    addEventListener('blur', pauseForBackground);
+    addEventListener('pagehide', pauseForBackground);
+    addEventListener('freeze', pauseForBackground);
+    addEventListener('beforeunload', pauseForBackground);
+    d.addEventListener('visibilitychange', () => {
+      if (d.hidden || d.visibilityState === 'hidden') pauseForBackground();
+      else tryPlayBgm();
+    });
     tryPlayBgm();
     bgmRetryTimer = setInterval(() => {
+      if (d.hidden || bgmPausedByBg) return;
       if (bgmUserMuted || bgmPausedByVideo || (!bgm.paused && !bgm.muted)) {
         if (!bgm.paused && !bgm.muted && bgmRetryTimer) { clearInterval(bgmRetryTimer); bgmRetryTimer = null; }
         return;
@@ -422,7 +440,7 @@
     }, 600);
     const unlockEvents = ['pointerdown', 'touchstart', 'touchmove', 'wheel', 'keydown', 'click', 'scroll', 'pointermove', 'mousemove', 'mouseenter', 'mouseover'];
     const onFirstGesture = () => {
-      if (bgmUserMuted || bgmPausedByVideo) return;
+      if (bgmUserMuted || bgmPausedByVideo || d.hidden) return;
       bgm.muted = false;
       bgm.volume = 0.55;
       const p = bgm.play();

@@ -530,8 +530,14 @@
   var a = document.getElementById('bgm');
   if (!a) return;
   a.volume = 0.55;
+  var stopBg = function() {
+    a.pause();
+    if (window.__bgmAC && window.__bgmAC.state === 'running') {
+      try { window.__bgmAC.suspend(); } catch (e) {}
+    }
+  };
   var tryStart = function() {
-    if (window.__bgmUserMuted) return;
+    if (window.__bgmUserMuted || document.hidden || document.visibilityState === 'hidden') return;
     a.muted = false;
     a.volume = 0.55;
     var p = a.play();
@@ -542,12 +548,20 @@
           try {
             var ctx = new AC();
             window.__bgmAC = ctx;
-            ctx.resume().then(function() { a.muted = false; a.play().catch(function(){}); }).catch(function(){});
+            ctx.resume().then(function() {
+              if (!document.hidden) { a.muted = false; a.play().catch(function(){}); }
+            }).catch(function(){});
           } catch (e) {}
         }
       });
     }
   };
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden || document.visibilityState === 'hidden') stopBg();
+  });
+  window.addEventListener('pagehide', stopBg);
+  window.addEventListener('blur', stopBg);
+  window.addEventListener('beforeunload', stopBg);
   tryStart();
   ['canplay', 'loadeddata', 'canplaythrough'].forEach(function(ev) { a.addEventListener(ev, tryStart, { once: true }); });
   window.addEventListener('DOMContentLoaded', tryStart, { once: true });
